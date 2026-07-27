@@ -9,12 +9,12 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
   tanstackStart: {
-    server: {
-      entry: "server",
-      // Override the Cloudflare default. `node-server` produces a standalone
-      // Node server at .output/server/index.mjs that runs on any Node 20+ host.
-      // For AWS Lambda, use "aws-lambda" instead.
-      preset: process.env.NITRO_PRESET || "node-server",
-    },
+    server: { entry: "server" },
   },
+  // Override the Cloudflare default. `node-server` produces a standalone
+  // Node server at .output/server/index.mjs that runs on any Node 20+ host.
+  // For AWS Lambda, use "aws-lambda" instead.
+  // NOTE: preset must live under top-level `nitro`, not `tanstackStart.server`
+  // — the latter is silently ignored by TanStack Start's vite plugin.
+  nitro: { preset: process.env.NITRO_PRESET || "node-server" },
 });
