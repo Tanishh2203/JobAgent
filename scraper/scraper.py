@@ -15,6 +15,7 @@ Run once with: `python scraper.py`
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import hmac
 import json
@@ -133,14 +134,21 @@ def sign(body: bytes) -> str:
     return hmac.new(INGEST_SECRET.encode(), body, hashlib.sha256).hexdigest()
 
 
-def fetch_profiles() -> list[dict]:
-    """Every row of public.profiles, via the Supabase REST API (service role)."""
+def fetch_profiles(user_id: str | None = None) -> list[dict]:
+    """Rows of public.profiles, via the Supabase REST API (service role).
+
+    With `user_id`, fetches just that one profile (used for the on-demand
+    "run this user now" trigger). Without it, fetches every profile (the
+    normal scheduled-run behavior).
+    """
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/profiles"
     headers = {
         "apikey": SUPABASE_SERVICE_ROLE_KEY,
         "authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
     }
-    params = {"select": "user_id,search_term,location,hours_old"}
+    params: dict[str, str] = {"select": "user_id,search_term,location,hours_old"}
+    if user_id:
+        params["user_id"] = f"eq.{user_id}"
     r = requests.get(url, headers=headers, params=params, timeout=30)
     r.raise_for_status()
     return r.json()
@@ -251,18 +259,39 @@ def run_for_profile(profile: dict) -> None:
         log.exception("user %s: posting failed permanently", user_id)
 
 
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--user-id",
+        default=None,
+        help=(
+            "Scrape just this one user's profile instead of every profile. "
+            "Used for on-demand runs (e.g. triggered right after a user "
+            "saves new Settings), not the scheduled all-users run."
+        ),
+    )
+    return parser.parse_args(argv)
+
+
 def main() -> int:
+    args = parse_args()
+
     log.info("run start: %s", datetime.now(timezone.utc).isoformat())
     log.info("webhook: %s", WEBHOOK_URL)
+    if args.user_id:
+        log.info("mode: single-user on-demand run (user_id=%s)", args.user_id)
 
     try:
-        profiles = fetch_profiles()
+        profiles = fetch_profiles(user_id=args.user_id)
     except Exception:
         log.exception("failed to fetch profiles from Supabase")
         return 2
 
     log.info("found %d profile(s)", len(profiles))
     if not profiles:
+        if args.user_id:
+            log.error("no profile found for user_id=%s", args.user_id)
+            return 3
         return 0
 
     for profile in profiles:
