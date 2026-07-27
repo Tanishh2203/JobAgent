@@ -39,7 +39,14 @@ function SettingsPage() {
 
   const save = useMutation({
     mutationFn: (patch: Record<string, unknown>) => updateFn({ data: patch }),
-    onSuccess: () => { toast.success("Saved"); qc.invalidateQueries({ queryKey: ["profile"] }); },
+    onSuccess: (row) => {
+      if (row.scrapeTrigger?.triggered) {
+        toast.success("Saved — searching for new jobs now (usually takes 1-2 min)");
+      } else {
+        toast.success("Saved");
+      }
+      qc.invalidateQueries({ queryKey: ["profile"] });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 

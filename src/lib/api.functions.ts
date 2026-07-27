@@ -6,6 +6,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { extractPdfText } from "./resume-parse.server";
 import { extractSkills } from "./skill-vocab";
 import { draftEmail } from "./email-writer.server";
+import { triggerScrapeForUser } from "./scrape-trigger.server";
 
 // ---------- profile ----------
 export const getProfile = createServerFn({ method: "GET" })
@@ -39,7 +40,13 @@ export const updateProfile = createServerFn({ method: "POST" })
     const { data: row, error } = await context.supabase
       .from("profiles").upsert(patch, { onConflict: "user_id" }).select().single();
     if (error) throw new Error(error.message);
-    return row;
+
+    // Best-effort: kick off an immediate re-scrape for this user so the new
+    // search term/location/resume takes effect now instead of waiting for
+    // the next scheduled run. Never fails the save if this doesn't work.
+    const scrapeTrigger = await triggerScrapeForUser(context.userId);
+
+    return { ...row, scrapeTrigger };
   });
 
 // ---------- resume ----------
@@ -100,6 +107,15 @@ export const listJobs = createServerFn({ method: "GET" })
       .limit(500);
     if (error) throw new Error(error.message);
     return data ?? [];
+  });
+
+export const clearJobs = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { error, count } = await context.supabase
+      .from("jobs").delete({ count: "exact" }).eq("user_id", context.userId);
+    if (error) throw new Error(error.message);
+    return { deleted: count ?? 0 };
   });
 
 const JobIdInput = z.object({ id: z.string().uuid() });
