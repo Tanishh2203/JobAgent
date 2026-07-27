@@ -1,0 +1,16 @@
+[Unit]
+Description=JobSpy scraper — ingest jobs into the Job Agent web app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Adjust user + paths for your EC2 setup
+User=ubuntu
+WorkingDirectory=/home/ubuntu/job-agent/scraper
+EnvironmentFile=/home/ubuntu/job-agent/scraper/.env
+ExecStart=/home/ubuntu/job-agent/scraper/.venv/bin/python scraper.py
+# Prevent overlapping runs if a scrape takes longer than the timer interval
+TimeoutStartSec=30min
+StandardOutput=journal
+StandardError=journal

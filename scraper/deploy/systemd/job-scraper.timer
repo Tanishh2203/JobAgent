@@ -1,0 +1,14 @@
+[Unit]
+Description=Run the JobSpy scraper every 2.5 hours
+Requires=job-scraper.service
+
+[Timer]
+# First run 5 minutes after boot, then every 2.5h relative to the last activation.
+OnBootSec=5min
+OnUnitActiveSec=2h 30min
+# Catch missed runs (e.g. after machine sleep/downtime)
+Persistent=true
+Unit=job-scraper.service
+
+[Install]
+WantedBy=timers.target
