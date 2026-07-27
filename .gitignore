@@ -51,3 +51,5 @@ scraper/.env
 *.njsproj
 *.sln
 *.sw?
+.vercel
+.env*
