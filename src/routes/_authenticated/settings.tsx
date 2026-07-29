@@ -2,14 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState, useEffect } from "react";
-import { getProfile, updateProfile, uploadResume, getActiveResume } from "@/lib/api.functions";
+import { getProfile, updateProfile, uploadResume, getActiveResume, updateResumeSkills } from "@/lib/api.functions";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Upload, Save } from "lucide-react";
+import { Upload, Save, X } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -30,12 +30,34 @@ function SettingsPage() {
   const updateFn = useServerFn(updateProfile);
   const uploadFn = useServerFn(uploadResume);
   const resumeFn = useServerFn(getActiveResume);
+  const skillsFn = useServerFn(updateResumeSkills);
 
   const profileQ = useQuery({ queryKey: ["profile"], queryFn: () => profileFn() });
   const resumeQ = useQuery({ queryKey: ["resume"], queryFn: () => resumeFn() });
 
   const [form, setForm] = useState<Record<string, unknown>>({});
   useEffect(() => { if (profileQ.data) setForm(profileQ.data); }, [profileQ.data]);
+
+  const [skills, setSkills] = useState<string[]>([]);
+  const [newSkill, setNewSkill] = useState("");
+  useEffect(() => { setSkills(resumeQ.data?.skills ?? []); }, [resumeQ.data?.id]);
+
+  const skillsMutation = useMutation<{ skills: string[] }, Error, string[], string[]>({
+    mutationFn: (next) => skillsFn({ data: { skills: next } }),
+    onMutate: (next) => { const prev = skills; setSkills(next); return prev; },
+    onError: (e, _next, prevSkills) => { toast.error(e.message); if (prevSkills) setSkills(prevSkills); },
+  });
+
+  const addSkill = () => {
+    const s = newSkill.trim().toLowerCase();
+    setNewSkill("");
+    if (!s || skills.includes(s)) return;
+    skillsMutation.mutate([...skills, s].sort());
+  };
+
+  const removeSkill = (s: string) => {
+    skillsMutation.mutate(skills.filter((x) => x !== s));
+  };
 
   const save = useMutation({
     mutationFn: (patch: Record<string, unknown>) => updateFn({ data: patch }),
@@ -77,7 +99,6 @@ function SettingsPage() {
           {resumeQ.data ? (
             <div>
               <p className="text-sm"><span className="font-medium">{resumeQ.data.filename}</span> · uploaded {new Date(resumeQ.data.created_at).toLocaleDateString()}</p>
-              <div className="mt-2 flex flex-wrap gap-1">{(resumeQ.data.skills ?? []).map((s) => <Badge key={s} variant="secondary">{s}</Badge>)}</div>
             </div>
           ) : <p className="text-sm text-muted-foreground">No resume uploaded yet.</p>}
           <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm hover:bg-accent">
@@ -86,6 +107,42 @@ function SettingsPage() {
             <input type="file" accept="application/pdf" className="hidden" disabled={upload.isPending}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) upload.mutate(f); }} />
           </label>
+
+          {resumeQ.data && (
+            <div className="space-y-2 border-t pt-4">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Skills (auto-extracted from your resume — add or remove as needed)
+              </Label>
+              <div className="flex flex-wrap gap-1">
+                {skills.length === 0 && <p className="text-sm text-muted-foreground">No skills yet.</p>}
+                {skills.map((s) => (
+                  <Badge key={s} variant="secondary" className="gap-1 pr-1">
+                    {s}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${s}`}
+                      className="rounded-sm hover:bg-muted-foreground/20"
+                      onClick={() => removeSkill(s)}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Input
+                  placeholder="Add a skill (e.g. react native)"
+                  value={newSkill}
+                  onChange={(e) => setNewSkill(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkill(); } }}
+                  className="max-w-xs"
+                />
+                <Button type="button" variant="outline" onClick={addSkill} disabled={!newSkill.trim()}>
+                  Add
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

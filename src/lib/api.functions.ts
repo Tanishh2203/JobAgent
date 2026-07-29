@@ -4,7 +4,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { extractPdfText } from "./resume-parse.server";
-import { extractSkills } from "./skill-vocab";
+import { extractSkills } from "./skill-extract.server";
 import { draftEmail } from "./email-writer.server";
 import { triggerScrapeForUser } from "./scrape-trigger.server";
 
@@ -77,7 +77,7 @@ export const uploadResume = createServerFn({ method: "POST" })
 
     const text = await extractPdfText(bytes);
     if (!text.trim()) throw new Error("Could not extract text from PDF");
-    const skills = extractSkills(text);
+    const skills = await extractSkills(text);
 
     // Deactivate previous resumes
     await context.supabase.from("resumes")
@@ -92,6 +92,32 @@ export const uploadResume = createServerFn({ method: "POST" })
     }).select().single();
     if (error) throw new Error(error.message);
     return { id: row.id, filename: row.filename, skills: row.skills, chars: text.length };
+  });
+
+const SkillsPatch = z.object({
+  skills: z.array(z.string().trim().min(1).max(60)).max(200),
+});
+
+// Lets the user hand-add or remove skills on top of what extraction found.
+// Client sends the full desired list; the next resume upload re-runs
+// extraction and replaces it (extraction always keeps running on upload).
+export const updateResumeSkills = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => SkillsPatch.parse(d))
+  .handler(async ({ data, context }) => {
+    const normalized = Array.from(
+      new Set(data.skills.map((s) => s.trim().toLowerCase()).filter(Boolean))
+    ).sort();
+
+    const { data: row, error } = await context.supabase
+      .from("resumes")
+      .update({ skills: normalized })
+      .eq("user_id", context.userId)
+      .eq("is_active", true)
+      .select("id, skills")
+      .single();
+    if (error) throw new Error(error.message);
+    return row;
   });
 
 // ---------- jobs ----------

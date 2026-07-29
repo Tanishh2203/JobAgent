@@ -1,5 +1,6 @@
-// Skill vocabulary for resume/JD matching. Shared between client (settings preview) and server.
-// Kept intentionally focused on AI/ML/backend/data — mirrors the Python `resume_parser.py` vocab.
+// Keyword-based skill vocabulary. Used only as a fallback when Gemini extraction
+// (see skill-extract.server.ts) is unavailable — e.g. missing GEMINI_API_KEY or a
+// failed API call. Kept intentionally focused on AI/ML/backend/data.
 export const SKILL_VOCAB: readonly string[] = [
   // languages
   "python", "typescript", "javascript", "java", "c++", "c#", "go", "rust", "sql", "bash",

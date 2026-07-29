@@ -1,6 +1,5 @@
 // Server-only matching, experience parsing, work-mode detection.
 // Mirrors the Python matcher.py + experience.py + workmode.py in TypeScript.
-import { extractSkills } from "./skill-vocab";
 
 const STOPWORDS = new Set([
   "the","and","for","with","you","are","our","from","this","that","have","has","was","will",
@@ -13,10 +12,22 @@ function tokens(text: string): string[] {
     .filter((t) => t.length > 2 && !STOPWORDS.has(t));
 }
 
+/** Word-boundary substring test — same escaping approach as the old keyword-vocab scan,
+ * but applied to an arbitrary skill string instead of a fixed vocab list. */
+function textMentionsSkill(text: string, skill: string): boolean {
+  const escaped = skill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`(?:^|[^a-z0-9+#.-])${escaped}(?:$|[^a-z0-9+#.-])`, "i");
+  return re.test(text);
+}
+
 /**
  * Composite score in [0, 1]:
  *   0.6 * jd-term overlap density (jd tokens present in resume / jd token count)
  *   0.4 * skill overlap (matched skills / max(1, resume skills))
+ *
+ * Skill overlap is checked by scanning the JD text directly for each resume skill,
+ * rather than extracting JD skills through a fixed keyword vocab — resume skills
+ * now come from open-ended LLM extraction and won't all appear in any fixed list.
  */
 export function scoreJob(resumeText: string, resumeSkills: string[], jdText: string) {
   const jdTok = tokens(jdText);
@@ -27,8 +38,8 @@ export function scoreJob(resumeText: string, resumeSkills: string[], jdText: str
   for (const t of jdTok) if (resumeTok.has(t)) overlap += 1;
   const density = overlap / jdTok.length;
 
-  const jdSkills = new Set(extractSkills(jdText));
-  const matched = resumeSkills.filter((s) => jdSkills.has(s));
+  const jdLower = jdText.toLowerCase();
+  const matched = resumeSkills.filter((s) => textMentionsSkill(jdLower, s));
   const skillScore = matched.length / Math.max(1, resumeSkills.length);
 
   const raw = 0.6 * density + 0.4 * skillScore;
